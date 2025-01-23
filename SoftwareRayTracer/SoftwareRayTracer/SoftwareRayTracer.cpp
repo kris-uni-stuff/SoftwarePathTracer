@@ -2,10 +2,11 @@
 #include <iostream>
 #include <map>
 #include <vector>
+#include <algorithm>
 
 //#include <SDL.h>
-#include <Windows.h>
-#undef main
+//#include <Windows.h>
+//#undef main
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
@@ -14,41 +15,42 @@
 #include "obj.h"
 #include "verts.h"
 #include "BVH.h"
+#include "timer.h"
 
-#define PIXEL_W 1200
+#define PIXEL_W 800
 #define PIXEL_H 800
 
-//SDL_Event event;
-//SDL_Window* window;
-//SDL_Renderer* renderer;
-
-/*
-float verts[] =
-{
-    //pos               col                 
-    -.5f, -.5f, 2.f,    1.f, 0.f, 0.f,      //tl
-    .5f, -.5f, 2.f,     1.f, 0.f, 0.f,      //tr
-    .5f, .5f, 2.f,    1.f, 0.f, 0.f,      //br
-    -.5f, -.5f, 2.f,    0.f, 1.f, 0.f,      //tl
-    .5f, .5f, 2.f,     0.f, 1.f, 0.f,      //tr
-    -.5f, .5f, 2.f,    0.f, 1.f, 0.f,      //br
-};
-*/
-
-struct payload
-{
-    vec3 colour;
-    int  depth;
-    int  rayHitSky;
-    vec3 rayOrigin;
-    vec3 rayDir;
-    uint rngState;
-    vec3 hitNormal;
-};
 
 
-glm::vec3 DoNothing(triangle* tri, int depth, glm::vec3 p, glm::vec3 dir);
-glm::vec3 CalculateColourFlat(triangle* tri, int depth, glm::vec3 p, glm::vec3 dir, payload* prd);
+glm::vec3 bkgd = glm::vec3(1.f, 1.f, 1.f);
+
+const float atten = 1.f;
+
+int max_recursion_depth = 1;
+
+const int use_bvh = 1;
+
+int samples_per_pixel = 1;
+int tracedSegments = 2;
+
+const int bvh_width = 2;
+
+vector<Object> objs;
+std::vector<triangle> tris;
+BVH_node g_BVH;
+float pixelBuffer[PIXEL_W * PIXEL_H * 3];
+
+glm::vec3 eye = glm::vec3(0.f, .05f, .05f);
+float l = -1.f;
+float r = 1.f;
+float t = 1.f;
+float b = -1.f;
+float n = 1.f;
+float f = 10.f;
+
+glm::vec3 light_pos(1.f, 2.f, 1.f);
+
+
 
 vec3 skyColour(vec3 rayDir)
 {
@@ -65,33 +67,62 @@ vec3 skyColour(vec3 rayDir)
     return colour;
 }
 
-glm::vec3 bkgd = glm::vec3(1.f, 1.f, 1.f);
+glm::vec3 CalculateColourFlat(triangle* tri, int depth, glm::vec3 p, glm::vec3 dir, payload* prd)
+{
+    prd->rayHitSky = 0;
 
-const float atten = 1.f;
+    vec3 worldNrm = tri->v1.nor;
 
-int max_recursion_depth = 1;
+    vec3 offset = worldNrm;
+    offset *= (0.0001 * sign(dot(dir, worldNrm)));
+    vec3 origin = p - offset;
+    prd->rayOrigin = origin;
 
-const int use_bvh = 1;
 
-int samples_per_pixel = 16;
-int tracedSegments = 8;
+    // For a random diffuse bounce direction, we follow the approach of
+    // Ray Tracing in One Weekend, and generate a random point on a sphere
+    // of radius 1 centered at the normal. This uses the random_unit_vector
+    // function from chapter 8.5:
+    const float theta = 6.2831853 * static_cast <float> (rand()) / static_cast <float> (RAND_MAX);  // Random in [0, 2pi]
+    const float u = 2.0 * static_cast <float> (rand()) / static_cast <float> (RAND_MAX) - 1.0;  // Random in [-1, 1]
+    const float r = sqrt(1.0 - u * u);
+    vec3 rayDir = worldNrm + vec3(r * cos(theta), r * sin(theta), u);
+    // Then normalize the ray direction:
+    rayDir = normalize(rayDir);
 
-const int bvh_width = 2;
+//    rayDir = worldNrm + random_unit_vector(); 
 
-vector<Object> objs;
-std::vector<triangle> tris;
-BVH_node g_BVH;
-float pixelBuffer[PIXEL_W * PIXEL_H * 3];
+    prd->rayDir = rayDir;
+    prd->hitNormal = worldNrm;
 
-glm::vec3 eye = glm::vec3(0.f, .05f, 2.15f);
-float l = -1.f;
-float r = 1.f;
-float t = 1.f;
-float b = -1.f;
-float n = 1.f;
-float f = 10.f;
+    vec3 colour = vec3(0.7f);
 
-glm::vec3 light_pos(1.f, 2.f, 1.f);
+    //  if(worldNrm.y > .99999)
+    //    prd.colour  = vec3(1, 0, 0);
+    //  if(worldNrm.z > .9999999)
+    //    prd.colour  = vec3(0, 1, 0);
+    //  if(worldNrm.x < -.89999)
+    //    prd.colour  = vec3(0, 0, 1);
+    //  if(worldNrm.x > .9999999)
+    //    prd.colour  = vec3(0, 1, 0);
+
+//    if (tri->v1.nor.x > 0.99)
+//        colour = vec3(1, 0, 0);
+//    if (tri->v1.nor.x < -0.99)
+//        colour = vec3(0, 1, 0);
+//    if (tri->v1.nor.y > 0.99)
+//        colour = vec3(0, 0, 1);
+    if (tri->primitiveID == 0 || tri->primitiveID == 1)
+        colour = vec3(1, 0, 0);
+    if (tri->primitiveID == 8 || tri->primitiveID == 9)
+        colour = vec3(0, 1, 0);
+    if (tri->primitiveID == 6 || tri->primitiveID == 7)
+        colour = vec3(0, 0, 1);
+
+    return colour;
+}
+
+
 
 
 void AppendTriangles(std::vector<triangle>* io, vector<Object> in_objs)
@@ -112,43 +143,16 @@ std::vector<triangle> AssemblePrimitives(float* verts, int n_verts)
         triangle t;
 
         t.v1.pos = glm::vec3(verts[(tc * 30) + 0], verts[(tc * 30) + 1], verts[(tc * 30) + 2]);
-//        t.v1.pos.x = verts[(tc * 30) + 0];
-//        t.v1.pos.y = verts[(tc * 30) + 1];
-//        t.v1.pos.z = verts[(tc * 30) + 2];
         t.v1.col = glm::vec3(verts[(tc * 30) + 3], verts[(tc * 30) + 4], verts[(tc * 30) + 5]);
-//        t.v1.col.x = verts[(tc * 30) + 3];
-//        t.v1.col.y = verts[(tc * 30) + 4];
-//        t.v1.col.z = verts[(tc * 30) + 5];
         t.v1.nor = glm::vec3(verts[(tc * 30) + 7], verts[(tc * 30) + 8], verts[(tc * 30) + 9]);
-//        t.v1.nor.x = verts[(tc * 30) + 7];
-//        t.v1.nor.y = verts[(tc * 30) + 8];
-//        t.v1.nor.z = verts[(tc * 30) + 9];
 
         t.v2.pos = glm::vec3(verts[(tc * 30) + 10], verts[(tc * 30) + 11], verts[(tc * 30) + 12]);
-//        t.v2.pos.x = verts[(tc * 30) + 10];
-//        t.v2.pos.y = verts[(tc * 30) + 11];
-//        t.v2.pos.z = verts[(tc * 30) + 12];
         t.v2.col = glm::vec3(verts[(tc * 30) + 13], verts[(tc * 30) + 14], verts[(tc * 30) + 15]);
-//        t.v2.col.x = verts[(tc * 30) + 13];
-//        t.v2.col.y = verts[(tc * 30) + 14];
-//        t.v2.col.z = verts[(tc * 30) + 15];
         t.v2.nor = glm::vec3(verts[(tc * 30) + 17], verts[(tc * 30) + 18], verts[(tc * 30) + 19]);
-//        t.v2.nor.x = verts[(tc * 30) + 17];
-//        t.v2.nor.y = verts[(tc * 30) + 18];
-//        t.v2.nor.z = verts[(tc * 30) + 19];
 
         t.v3.pos = glm::vec3(verts[(tc * 30) + 20], verts[(tc * 30) + 21], verts[(tc * 30) + 22]);
-//        t.v3.pos.x = verts[(tc * 30) + 20];
-//        t.v3.pos.y = verts[(tc * 30) + 21];
- //       t.v3.pos.z = verts[(tc * 30) + 22];
         t.v3.col = glm::vec3(verts[(tc * 30) + 23], verts[(tc * 30) + 24], verts[(tc * 30) + 25]);
-//        t.v3.col.x = verts[(tc * 30) + 23];
-//        t.v3.col.y = verts[(tc * 30) + 24];
- //       t.v3.col.z = verts[(tc * 30) + 25];
         t.v3.nor = glm::vec3(verts[(tc * 30) + 27], verts[(tc * 30) + 28], verts[(tc * 30) + 29]);
-//        t.v3.nor.x = verts[(tc * 30) + 27];
-//        t.v3.nor.y = verts[(tc * 30) + 28];
- //       t.v3.nor.z = verts[(tc * 30) + 29];
 
         t.reflect = verts[(tc * 30) + 26] ? true : false;
         t.primitiveID = tc;
@@ -198,65 +202,6 @@ glm::vec3 GetRandomPixelPosInViewSpace(int pixel_x, int pixel_y, int W, int H, f
     return pvs;
 }
 
-/*
-bool ComputeBarycentricCoordinates(float x_ndc, float y_ndc, triangle& t, float& alpha, float& beta, float& gamma)
-{
-    float bc_edge = (t.v2.pos.y - t.v1.pos.y) * x_ndc + (t.v1.pos.x - t.v2.pos.x) * y_ndc + (t.v2.pos.x * t.v1.pos.y) - (t.v1.pos.x * t.v2.pos.y);
-    float bc_point = (t.v2.pos.y - t.v1.pos.y) * t.v3.pos.x + (t.v1.pos.x - t.v2.pos.x) * t.v3.pos.y + (t.v2.pos.x * t.v1.pos.y) - (t.v1.pos.x * t.v2.pos.y);
-    alpha = bc_edge / bc_point;
-
-    float ac_edge = (t.v3.pos.y - t.v1.pos.y) * x_ndc + (t.v1.pos.x - t.v3.pos.x) * y_ndc + (t.v3.pos.x * t.v1.pos.y) - (t.v1.pos.x * t.v3.pos.y);
-    float ac_point = (t.v3.pos.y - t.v1.pos.y) * t.v2.pos.x + (t.v1.pos.x - t.v3.pos.x) * t.v2.pos.y + (t.v3.pos.x * t.v1.pos.y) - (t.v1.pos.x * t.v3.pos.y);
-    beta = ac_edge / ac_point;
-
-    float ab_edge = (t.v3.pos.y - t.v2.pos.y) * x_ndc + (t.v2.pos.x - t.v3.pos.x) * y_ndc + (t.v3.pos.x * t.v2.pos.y) - (t.v2.pos.x * t.v3.pos.y);
-    float ab_point = (t.v3.pos.y - t.v2.pos.y) * t.v1.pos.x + (t.v2.pos.x - t.v3.pos.x) * t.v1.pos.y + (t.v3.pos.x * t.v2.pos.y) - (t.v2.pos.x * t.v3.pos.y);
-    gamma = ab_edge / ab_point;
-
-    if (alpha > 0.f && alpha < 1.f &&
-        beta > 0.f && beta < 1.f &&
-        gamma > 0.f && gamma < 1.f)
-    {
-        return true;
-    }
-
-    return false;
-}
-*/
-/*
-float sign(vec3 p1, vec3 p2, vec3 p3)
-{
-    return (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
-}
-
-bool PointInTriangle(vec3 pt, vec3 v1, vec3 v2, vec3 v3)
-{
-    float d1, d2, d3;
-    bool has_neg, has_pos;
-
-    d1 = sign(pt, v1, v2);
-    d2 = sign(pt, v2, v3);
-    d3 = sign(pt, v3, v1);
-
-    has_neg = (d1 < 0) || (d2 < 0) || (d3 < 0);
-    has_pos = (d1 > 0) || (d2 > 0) || (d3 > 0);
-
-    return !(has_neg && has_pos);
-}
-*/
-/*
-bool PointInTriangle(vec3 pt, vec3 v1, vec3 v2, vec3 v3)
-{
-    float edge1 = (v2.y - v1.y) * pt.x + (v1.x - v2.x) * pt.y + (v2.x * v1.y) - (v1.x * v2.y);
-    float edge2 = (v3.y - v2.y) * pt.x + (v2.x - v3.x) * pt.y + (v3.x * v2.y) - (v2.x * v3.y);
-    float edge3 = (v1.y - v3.y) * pt.x + (v3.x - v1.x) * pt.y + (v1.x * v3.y) - (v3.x * v1.y);
-
-    if (edge1 < 0.f && edge2 < 0.f && edge3 < 0.f)
-        return true;
-
-    return false;
-}
-*/
 
 bool PointInTriangle(glm::vec3 pt, glm::vec3 v1, glm::vec3 v2, glm::vec3 v3)
 {
@@ -325,238 +270,10 @@ float RayTriangleIntersection(glm::vec3 o, glm::vec3 dir, triangle *tri, glm::ve
 
 
 
-//void RayTrianglesIntersection(glm::vec3 o, glm::vec3 dir, float& t, glm::vec3& io_col, int depth, triangle* from_tri, closest_hit p_hit);
-//void RayBVHIntersection(glm::vec3 o, glm::vec3 dir, BVH_node* inBVH, float& t, glm::vec3& ioCol, int depth, triangle* from_tri, closest_hit p_hit, payload *prd);
 
 
 
 
-glm::vec3 Diffuse(glm::vec3 col, glm::vec3 lightDir, glm::vec3 normal)
-{
-    float dotNL = std::max(dot(normal, lightDir), 0.f);
-    glm::vec3 ret = col * dotNL;
-    return ret;
-}
-
-glm::vec3 DoNothing(triangle* tri, int depth, glm::vec3 p, glm::vec3 dir)
-{
-    return glm::vec3(0.f);
-}
-/*
-glm::vec3 CalculateColourWhitted(triangle *tri, int depth, glm::vec3 p, glm::vec3 dir)
-{
-    glm::vec3 refl_col(0.f);
-    float t = -1;
-
-    glm::vec3 amb(0.f), diff(0.f);
-
-    amb = .1f * tri->v1.col;
-
-    
-    //shadow
-    glm::vec3 dummy;
-    glm::vec3 lightDir = glm::normalize(light_pos - p);
-    if (use_bvh)
-        RayBVHIntersection(p, lightDir, &g_BVH, t, dummy, 0, tri, DoNothing);
-    else
-        RayTrianglesIntersection(p, lightDir, t, dummy, 0, tri, DoNothing);
-    if (t < 0)
-    {
-        diff = Diffuse(tri->v1.col, lightDir, tri->v1.nor);
-    }
-    
-
-    //reflection
-    if (tri->reflect && depth < max_recursion_depth)
-    {
-        glm::vec3 refl = glm::reflect(dir, tri->v1.nor);
-        if(use_bvh)
-           RayBVHIntersection(p, refl, &g_BVH, t, refl_col, depth + 1, tri, CalculateColour);
-        else
-           RayTrianglesIntersection(p, refl, t, refl_col, depth + 1, tri, CalculateColour);
-    }
-
-    glm::vec3 ret = amb + diff + (refl_col * atten);
-//    glm::vec3 ret = tri->v1.col + (refl_col * atten);
-
-    return ret;
-}
-*/
-
-vec3 random_unit_vector()
-{
-    while (true)
-    {
-        float randx = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
-        randx *= 2.f;
-        randx -= 1.f;
-
-        float randy = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
-        randy *= 2.f;
-        randy -= 1.f;
-
-        float randz = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
-        randz *= 2.f;
-        randz -= 1.f;
-
-        vec3 v = vec3(randx, randy, randz);
-        if (!(v.x == 0.f || v.y == 0.f || v.z == 0.f))
-            return normalize(v);
-    }
-}
-
-
-glm::vec3 CalculateColourFlat(triangle* tri, int depth, glm::vec3 p, glm::vec3 dir, payload *prd)
-{
-    prd->rayHitSky = 0;
-
-    vec3 worldNrm = tri->v1.nor;
-
-    vec3 offset = worldNrm; 
-    offset *= (0.0001 * sign(dot(dir, worldNrm)));
-    vec3 origin = p - offset;
-    prd->rayOrigin = origin;
-
-    // For a random diffuse bounce direction, we follow the approach of
-    // Ray Tracing in One Weekend, and generate a random point on a sphere
-    // of radius 1 centered at the normal. This uses the random_unit_vector
-    // function from chapter 8.5:
-    const float theta = 6.2831853 * static_cast <float> (rand()) / static_cast <float> (RAND_MAX);  // Random in [0, 2pi]
-    const float u = 2.0 * static_cast <float> (rand()) / static_cast <float> (RAND_MAX) - 1.0;  // Random in [-1, 1]
-    const float r = sqrt(1.0 - u * u);
-    vec3 rayDir = worldNrm + vec3(r * cos(theta), r * sin(theta), u);
-    // Then normalize the ray direction:
-    rayDir = normalize(rayDir);
-
-//    vec3 rayDir = worldNrm + random_unit_vector(); 
-
-    prd->rayDir = rayDir;
-    prd->hitNormal = worldNrm;
-
-    vec3 colour = vec3(0.7f);
-
-    //  if(worldNrm.y > .99999)
-    //    prd.colour  = vec3(1, 0, 0);
-    //  if(worldNrm.z > .9999999)
-    //    prd.colour  = vec3(0, 1, 0);
-    //  if(worldNrm.x < -.89999)
-    //    prd.colour  = vec3(0, 0, 1);
-    //  if(worldNrm.x > .9999999)
-    //    prd.colour  = vec3(0, 1, 0);
-
-//    if (tri->v1.nor.x > 0.99)
-//        colour = vec3(1, 0, 0);
-//    if (tri->v1.nor.x < -0.99)
-//        colour = vec3(0, 1, 0);
-//    if (tri->v1.nor.y > 0.99)
-//        colour = vec3(0, 0, 1);
-    if (tri->primitiveID == 0 || tri->primitiveID == 1)
-        colour = vec3(1, 0, 0);
-    if (tri->primitiveID == 8 || tri->primitiveID == 9)
-        colour = vec3(0, 1, 0);
-    if (tri->primitiveID == 6 || tri->primitiveID == 7)
-        colour = vec3(0, 0, 1);
-
-    return colour;
-}
-
-
-/*
-glm::vec3 CalculateColourBVH(triangle* tri, int depth, glm::vec3 p, glm::vec3 dir)
-{
-    glm::vec3 refl_col(0.f);
-    float t;
-
-    if (tri->reflect && depth < max_recursion_depth)
-    {
-        glm::vec3 refl = glm::reflect(dir, tri->v1.nor);
-        RayBVHIntersection(p, refl, &g_BVH, t, refl_col, depth + 1, tri);
-    }
-
-    glm::vec3 ret = tri->v1.col + (refl_col * atten);
-
-    return ret;
-}
-*/
-/*
-void RayTrianglesIntersection(glm::vec3 o, glm::vec3 dir, float& t, glm::vec3 &io_col, int depth, triangle *from_tri, closest_hit p_hit)
-{
-    float closest_t = FLT_MAX;
-    int closest_tc = -1;
-    glm::vec3 closest_p;
-    for (int tc = 0; tc < tris.size(); tc++)
-    {
-        triangle* tri = &tris[tc];
-
-        if (from_tri != NULL && tri == from_tri)
-            continue;
-
-        glm::vec3 p = glm::vec3(0);
-        float current_t = RayTriangleIntersection(o, dir, tri, p);
-
-        if (current_t > 0 && current_t < f)
-        {
-            if (current_t < closest_t)
-            {
-                closest_t = current_t;
-                closest_tc = tc;
-                closest_p = p;
-            }
-        }
-    }
-
-    if (closest_tc >= 0)
-    {
-        t = closest_t;
-        triangle* closest_tri = &tris[closest_tc];
-        io_col = p_hit(closest_tri, depth, closest_p, dir, NULL);
-        return;
-    }
-
-    io_col = bkgd;
-    return;
-}
-
-void RayTraceTriangles()
-{
-    for (int pixel_y = 0; pixel_y < PIXEL_H; ++pixel_y)
-    {
-        float percf = (float)pixel_y / (float)PIXEL_H;
-        int perci = percf * 100;
-        std::clog << "\rScanlines done: " << perci << "%" << ' ' << std::flush;
-
-        for (int pixel_x = 0; pixel_x < PIXEL_W; ++pixel_x)
-        {
-
-            glm::vec3 pp = GetPixelInViewSpace(pixel_x, pixel_y, PIXEL_W, PIXEL_H, l, r, t, b, n, f);
-            glm::vec3 dir = normalize(pp);
-            dir.y = -dir.y;
-            dir.z = -dir.z;
-
-            float t = 0;
-            glm::vec3 col(0.f);            
-            RayTrianglesIntersection(eye, dir, t, col, 0, NULL, CalculateColour);
-
-//            if (t > 0 && t < f)
-            {
-                float pixel_r = col.x > 1 ? 255 : col.x * 255;
-                float pixel_g = col.y > 1 ? 255 : col.y * 255;
-                float pixel_b = col.z > 1 ? 255 : col.z * 255;
-
-                pixelBuffer[(pixel_y * PIXEL_W * 3) + (pixel_x * 3) + 0] = pixel_r;
-                pixelBuffer[(pixel_y * PIXEL_W * 3) + (pixel_x * 3) + 1] = pixel_g;
-                pixelBuffer[(pixel_y * PIXEL_W * 3) + (pixel_x * 3) + 2] = pixel_b;
-
-//                SDL_SetRenderDrawColor(renderer, pixel_r, pixel_g, pixel_b, 255);
-//                SDL_RenderDrawPoint(renderer, pixel_x, pixel_y);
-            }
-        }
-    }
-
-    std::clog << "\rFinish rendering.           \n";
-
-}
-*/
 
 void swap(float& l, float& r)
 {
@@ -718,6 +435,11 @@ void PathTraceBVH()
         int perci = percf * 100;
         std::clog << "\rScanlines done: " << perci << "%" << ' ' << std::flush;
 
+        if (pixel_y == 10)
+        {
+            int t = 0;
+        }
+
         for (int pixel_x = 0; pixel_x < PIXEL_W; ++pixel_x)
         {
 
@@ -767,9 +489,14 @@ void PathTraceBVH()
             auto g = linear_to_gamma(average_pixel_colour.y);
             auto b = linear_to_gamma(average_pixel_colour.z);
 
-            float pixel_r = r > 1 ? 255 : r * 255;
-            float pixel_g = g > 1 ? 255 : g * 255;
-            float pixel_b = b > 1 ? 255 : b * 255;
+
+            float rc = std::clamp(r, .0f, 1.f);
+            float gc = std::clamp(g, .0f, 1.f);
+            float bc = std::clamp(b, .0f, 1.f);
+
+            float pixel_r = rc * 255.f;
+            float pixel_g = gc * 255.f;
+            float pixel_b = bc * 255.f;
 
             pixelBuffer[(pixel_y * PIXEL_W * 3) + (pixel_x * 3) + 0] = pixel_r;
             pixelBuffer[(pixel_y * PIXEL_W * 3) + (pixel_x * 3) + 1] = pixel_g;
@@ -784,20 +511,11 @@ void PathTraceBVH()
 }
 
 
-void CounterEndAndPrint(LARGE_INTEGER StartingTime, LARGE_INTEGER *EndingTime, LARGE_INTEGER Frequency)
-{
-    QueryPerformanceCounter(EndingTime);
-    
-    LARGE_INTEGER ElapsedMicroseconds;
-    ElapsedMicroseconds.QuadPart = (*EndingTime).QuadPart - StartingTime.QuadPart;
-    ElapsedMicroseconds.QuadPart *= 1000000;
-    ElapsedMicroseconds.QuadPart /= Frequency.QuadPart;
-    std::cout << (float)ElapsedMicroseconds.QuadPart / (float)1000000 << std::endl;
-}
 
 int main()
 {
-    srand((unsigned int)time(NULL));
+
+//    srand((unsigned int)time(NULL));
 
     LARGE_INTEGER Frequency;
     QueryPerformanceFrequency(&Frequency);
@@ -811,9 +529,9 @@ int main()
 
     obj_parse(MODEL_PATH.c_str(), &objs, .1f);
 
-    tris = AssemblePrimitives(verts, n_verts);
+//    tris = AssemblePrimitives(verts, n_verts);
 
-//    AppendTriangles(&tris, objs);
+    AppendTriangles(&tris, objs);
 
     LARGE_INTEGER Construct_StartingTime, Construct_EndingTime;
     QueryPerformanceCounter(&Construct_StartingTime);

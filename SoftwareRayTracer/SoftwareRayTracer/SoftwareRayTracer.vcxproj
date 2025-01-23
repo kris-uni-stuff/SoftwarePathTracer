@@ -108,6 +108,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -139,6 +140,7 @@
     <ClInclude Include="BVH.h" />
     <ClInclude Include="math.h" />
     <ClInclude Include="obj.h" />
+    <ClInclude Include="timer.h" />
     <ClInclude Include="tiny_obj_loader.h" />
     <ClInclude Include="verts.h" />
   </ItemGroup>

@@ -63,7 +63,7 @@ int savebitmap(const char* filename, float* pixelBuffer, int w, int h)
 	printf("savebitmap - saved %s w=%d h=%d bits=%d\n", filename, infoHdr.biWidth, infoHdr.biHeight, infoHdr.biBitCount);
 }
 
-double linear_to_gamma(double linear_component)
+float linear_to_gamma(float linear_component)
 {
 	if (linear_component > 0)
 	{
