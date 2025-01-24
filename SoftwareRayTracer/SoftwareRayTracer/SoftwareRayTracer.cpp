@@ -30,8 +30,8 @@ int max_recursion_depth = 1;
 
 const int use_bvh = 1;
 
-int samples_per_pixel = 1;
-int tracedSegments = 2;
+int samples_per_pixel = 64;
+int tracedSegments = 8;
 
 const int bvh_width = 2;
 
@@ -435,7 +435,7 @@ void PathTraceBVH()
         int perci = percf * 100;
         std::clog << "\rScanlines done: " << perci << "%" << ' ' << std::flush;
 
-        if (pixel_y == 10)
+        if (pixel_y == 11)
         {
             int t = 0;
         }
@@ -523,8 +523,9 @@ int main()
 //    const std::string MODEL_PATH = "objs/white_oak/white_oak.obj";
 //    const std::string MODEL_PATH = "objs/bird/textured_quad.obj";
  //   const std::string MODEL_PATH = "objs/room/viking_room.obj";
-        const std::string MODEL_PATH = "objs/cornell/Cornell.obj";
-//    const std::string MODEL_PATH = "objs/sphere/sphere.obj";
+    //const std::string MODEL_PATH = "objs/cornell/Cornell.obj";
+    const std::string MODEL_PATH = "objs/cornell2/cornell-box.obj";
+    //    const std::string MODEL_PATH = "objs/sphere/sphere.obj";
 //    const std::string MODEL_PATH = "objs/pokeball/pokeball.obj";
 
     obj_parse(MODEL_PATH.c_str(), &objs, .1f);

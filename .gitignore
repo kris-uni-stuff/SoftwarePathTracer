@@ -5,6 +5,9 @@
 *.idb
 *.exe
 
+#outputs
+.bmp
+.hdr
 
 # Visual C++ cache files
 *.VC.db
