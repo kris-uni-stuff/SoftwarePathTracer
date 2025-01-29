@@ -227,7 +227,7 @@ int obj_parse(const char* filename, vector<Object>* objs, float scale)
 	for (const auto& v : attrib.vertices)
 	{
 		if (v > max_vert)
-			max_vert = v;
+			max_vert = 1;
 	}
 
 	for (const auto& shape : shapes) 

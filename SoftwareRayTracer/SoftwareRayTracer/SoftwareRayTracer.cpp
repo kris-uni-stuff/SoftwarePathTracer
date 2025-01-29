@@ -30,8 +30,8 @@ int max_recursion_depth = 1;
 
 const int use_bvh = 1;
 
-int samples_per_pixel = 64;
-int tracedSegments = 8;
+int samples_per_pixel = 32;
+int tracedSegments = 4;
 
 const int bvh_width = 2;
 
@@ -40,7 +40,7 @@ std::vector<triangle> tris;
 BVH_node g_BVH;
 float pixelBuffer[PIXEL_W * PIXEL_H * 3];
 
-glm::vec3 eye = glm::vec3(0.f, .05f, .05f);
+glm::vec3 eye = glm::vec3(-1.f, 2.5f, 3.0f);
 float l = -1.f;
 float r = 1.f;
 float t = 1.f;
@@ -112,11 +112,11 @@ glm::vec3 CalculateColourFlat(triangle* tri, int depth, glm::vec3 p, glm::vec3 d
 //        colour = vec3(0, 1, 0);
 //    if (tri->v1.nor.y > 0.99)
 //        colour = vec3(0, 0, 1);
-    if (tri->primitiveID == 0 || tri->primitiveID == 1)
+    if (tri->primitiveID == 6 || tri->primitiveID == 7)
         colour = vec3(1, 0, 0);
     if (tri->primitiveID == 8 || tri->primitiveID == 9)
         colour = vec3(0, 1, 0);
-    if (tri->primitiveID == 6 || tri->primitiveID == 7)
+    if (tri->primitiveID == 10 || tri->primitiveID == 11)
         colour = vec3(0, 0, 1);
 
     return colour;
@@ -528,7 +528,7 @@ int main()
     //    const std::string MODEL_PATH = "objs/sphere/sphere.obj";
 //    const std::string MODEL_PATH = "objs/pokeball/pokeball.obj";
 
-    obj_parse(MODEL_PATH.c_str(), &objs, .1f);
+    obj_parse(MODEL_PATH.c_str(), &objs, 1.f);
 
 //    tris = AssemblePrimitives(verts, n_verts);
 
