@@ -17,8 +17,8 @@
 #include "BVH.h"
 #include "timer.h"
 
-#define PIXEL_W 800
-#define PIXEL_H 800
+#define PIXEL_W 1920
+#define PIXEL_H 1080
 
 
 
@@ -47,6 +47,9 @@ float t = 1.f;
 float b = -1.f;
 float n = 1.f;
 float f = 10.f;
+
+float vfov = glm::radians(60.f);
+float aspect = (float)PIXEL_W / (float)PIXEL_H;
 
 glm::vec3 light_pos(1.f, 2.f, 1.f);
 
@@ -174,6 +177,16 @@ glm::vec3 GetPixelInViewSpace(int pixel_x, int pixel_y, int W, int H, float l, f
     pvs.z = n;
 
     return pvs;
+}
+
+vec3 GetRandomRayDirection(float px, float py, int W, int H, float aspect_ratio, float fov)
+{
+    float randx = static_cast <float> (rand()) / static_cast <float> (RAND_MAX) - .5f;
+    vec3 X = aspect_ratio * fov * ((2 * (px + randx)) / W - 1) * vec3(1, 0, 0);
+    float randy = static_cast <float> (rand()) / static_cast <float> (RAND_MAX) - .5f;
+    vec3 Y = fov * ((2 * (py + randy)) / H - 1) * vec3(0, 1, 0);
+    vec3 Z = vec3(0, 0, 1);
+    return X + Y + Z;
 }
 
 glm::vec3 GetRandomPixelPosInViewSpace(int pixel_x, int pixel_y, int W, int H, float l, float r, float t, float b, float n, float f)
@@ -446,8 +459,8 @@ void PathTraceBVH()
             glm::vec3 summed_pixel_color(0, 0, 0);
             for (int sample = 0; sample < samples_per_pixel; sample++)
             {
-
-                glm::vec3 pp = GetRandomPixelPosInViewSpace(pixel_x, pixel_y, PIXEL_W, PIXEL_H, l, r, t, b, n, f);
+                glm::vec3 pp = GetRandomRayDirection(pixel_x, pixel_y, PIXEL_W, PIXEL_H, aspect, vfov);
+             //   glm::vec3 pp = GetRandomPixelPosInViewSpace(pixel_x, pixel_y, PIXEL_W, PIXEL_H, l, r, t, b, n, f);
 
                 vec3 origin = eye;
 
